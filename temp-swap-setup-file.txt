@@ -1,0 +1,34 @@
+#!/bin/bash
+
+# Allocate a 2GB swap file
+fallocate -l 2G /swapfile
+
+# Set the correct permissions
+chmod 600 /swapfile
+
+# Set up the swap space
+mkswap /swapfile
+
+# Enable the swap file
+swapon /swapfile
+
+# Add the swap file to /etc/fstab to enable it on boot
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+# Create a temporary file for additional tmp space
+fallocate -l 2G /tmpfsfile
+
+# Format it as ext4 filesystem
+mkfs.ext4 /tmpfsfile
+
+# Create a mount point
+mkdir -p /mnt/tmp
+
+# Mount the file as additional tmp space
+mount -o loop /tmpfsfile /mnt/tmp
+
+# Add the mount entry to /etc/fstab to enable it on boot
+echo '/tmpfsfile /mnt/tmp ext4 loop 0 0' >> /etc/fstab
+
+# Print a message indicating success
+echo "Swap file and additional tmp space created and enabled successfully."
