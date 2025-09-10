@@ -1,0 +1,32 @@
+version: '3.8'  # Docker Compose file format version
+
+services:        # Define services (containers)
+  web:           # Service name
+    image: nginx:alpine
+    ports:
+      - "8080:80"     # Host:Container mapping
+    volumes:
+      - ./html:/usr/share/nginx/html
+
+  app:
+    build: ./app       # Build image from Dockerfile inside ./app
+    ports:
+      - "5000:5000"
+    environment:
+      - DEBUG=true
+    depends_on:
+      - db
+
+  db:
+    image: mysql:5.7
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: mydb
+      MYSQL_USER: user
+      MYSQL_PASSWORD: userpass
+    volumes:
+      - db_data:/var/lib/mysql
+
+volumes:        # Named volumes
+  db_data:
