@@ -8,15 +8,6 @@ services:        # Define services (containers)
     volumes:
       - ./html:/usr/share/nginx/html
 
-  app:
-    build: ./app       # Build image from Dockerfile inside ./app
-    ports:
-      - "5000:5000"
-    environment:
-      - DEBUG=true
-    depends_on:
-      - db
-
   db:
     image: mysql:5.7
     restart: always
