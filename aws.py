@@ -5,12 +5,14 @@ from botocore.exceptions import ClientError
 
 def list_key_pairs(ec2):
     response = ec2.describe_key_pairs()
+    key_pairs = response.get('KeyPairs', [])
     print("\nExisting Key Pairs:")
-    if not response['KeyPairs']:
+    if not key_pairs:
         print("  None")
     else:
-        for kp in response['KeyPairs']:
-            print(f"  - {kp['KeyName']}")
+        for idx, kp in enumerate(key_pairs, start=1):
+            print(f"  {idx} - {kp['KeyName']}")
+    return key_pairs
 
 def create_key_pair(ec2, key_name):
     try:
@@ -26,9 +28,11 @@ def create_key_pair(ec2, key_name):
 
 def list_security_groups(ec2):
     response = ec2.describe_security_groups()
+    groups = response.get('SecurityGroups', [])
     print("\nExisting Security Groups:")
-    for sg in response['SecurityGroups']:
-        print(f"  - {sg['GroupName']} (ID: {sg['GroupId']})")
+    for idx, sg in enumerate(groups, start=1):
+        print(f"  {idx} - {sg['GroupName']} (ID: {sg['GroupId']})")
+    return groups
 
 def get_or_create_security_group(ec2, group_input):
     security_group_id = None
@@ -81,7 +85,6 @@ def get_amis_by_os(ec2_client, os_choice):
     response = ec2_client.describe_images(
         Filters=filters,
         Owners=['amazon', '099720109477', '137112412989', '125523088429'],  
-        # Amazon, Canonical (Ubuntu), Microsoft, RedHat, SUSE owners
     )
     images = response.get('Images', [])
     images.sort(key=lambda x: x['CreationDate'], reverse=True)
@@ -136,23 +139,45 @@ This script will guide you step-by-step to create an EC2 instance.
     session = boto3.Session(region_name=region)
     ec2 = session.client('ec2')
 
-    # List existing Key Pairs
-    list_key_pairs(ec2)
-    # Key Pair
-    key_name = input("\nEnter the name of the Key Pair (if it doesn't exist, it will be created): ").strip()
-    create_key_pair(ec2, key_name)
+    # Key Pair Selection
+    existing_keys = list_key_pairs(ec2)
+    key_input = input("\nEnter Key Pair Name OR the number from the list: ").strip()
+    
+    if key_input.isdigit():
+        idx = int(key_input) - 1
+        if 0 <= idx < len(existing_keys):
+            key_name = existing_keys[idx]['KeyName']
+            print(f"Using existing key: {key_name}")
+        else:
+            print("Invalid selection number."); sys.exit(1)
+    else:
+        key_name = key_input
+        if not key_name:
+            print("Key name is required."); sys.exit(1)
+        create_key_pair(ec2, key_name)
 
-    # List existing Security Groups
-    list_security_groups(ec2)
-    # Security Group
-    group_input = input("\nEnter the Security Group name or ID (if it doesn't exist, it will be created): ").strip()
-    security_group_id = get_or_create_security_group(ec2, group_input)
+    # Security Group Selection (UPDATED with Number Logic)
+    existing_sgs = list_security_groups(ec2)
+    sg_input = input("\nEnter Security Group Name/ID OR the number from the list: ").strip()
+    
+    if sg_input.isdigit():
+        idx = int(sg_input) - 1
+        if 0 <= idx < len(existing_sgs):
+            security_group_id = existing_sgs[idx]['GroupId']
+            print(f"Selected Security Group: {existing_sgs[idx]['GroupName']} ({security_group_id})")
+        else:
+            print("Invalid selection number."); sys.exit(1)
+    else:
+        if not sg_input:
+            print("Security Group input is required."); sys.exit(1)
+        security_group_id = get_or_create_security_group(ec2, sg_input)
 
     # Instance Type Selection
     print("\nSelect Instance Type:")
-    print("1 - [2vCPU and 2GiB RAM - t3.small] TomcatServer")
-    print("2 - [2vCPU and 4GiB RAM - t3.medium] Jenkins_Server | Sonarqube | Jfrog | Docker | K8S")
-    print("3 - [2vCPU and 8GiB RAM - t3.large] Kubernetes Setup")
+    print("1 - [2vCPU and 2GiB RAM - t3.small] LinuxPractical")
+    print("2 - [2vCPU and 2GiB RAM - t3.small] TomcatServer")
+    print("3 - [2vCPU and 4GiB RAM - t3.medium] Jenkins_Server | Sonarqube | Jfrog | Docker | K8S")
+    print("4 - [2vCPU and 8GiB RAM - t3.large] Kubernetes Setup")
     instance_type_choice = input("Enter the number corresponding to your desired instance type: ").strip()
     instance_type_map = {"1": "t3.small", "2": "t3.medium", "3": "t3.large"}
     instance_type = instance_type_map.get(instance_type_choice, "t3.small")
@@ -189,43 +214,31 @@ This script will guide you step-by-step to create an EC2 instance.
     # Instance Count and Names
     instance_count = int(input("\nEnter the number of instances to create (default: 1): ").strip() or "1")
     if instance_count <= 0:
-        print("Instance count must be at least 1.")
-        sys.exit(1)
+        print("Instance count must be at least 1."); sys.exit(1)
 
     if instance_count > 1:
         instance_names = []
         for i in range(instance_count):
             instance_name = input(f"Enter the name for instance {i+1}: ").strip()
             if not instance_name:
-                print(f"Instance name for instance {i+1} is required.")
-                sys.exit(1)
+                print(f"Instance name for instance {i+1} is required."); sys.exit(1)
             instance_names.append(instance_name)
     else:
         instance_name = input("Enter the name for the EC2 instance: ").strip()
         if not instance_name:
-            print("Instance name is required.")
-            sys.exit(1)
+            print("Instance name is required."); sys.exit(1)
         instance_names = [instance_name]
 
     # Block device mappings
     block_device_mappings = [{
         "DeviceName": "/dev/xvda",
-        "Ebs": {
-            "VolumeSize": int(storage_size),
-            "DeleteOnTermination": True,
-            "VolumeType": "gp2"
-        }
+        "Ebs": {"VolumeSize": int(storage_size), "DeleteOnTermination": True, "VolumeType": "gp2"}
     }]
 
     if additional_volume:
-        # Attach an extra volume at /dev/sdf (common secondary device)
         block_device_mappings.append({
             "DeviceName": "/dev/sdf",
-            "Ebs": {
-                "VolumeSize": additional_volume,
-                "DeleteOnTermination": True,
-                "VolumeType": "gp2"
-            }
+            "Ebs": {"VolumeSize": additional_volume, "DeleteOnTermination": True, "VolumeType": "gp2"}
         })
 
     print("\nLaunching instances...")
@@ -255,8 +268,7 @@ This script will guide you step-by-step to create an EC2 instance.
                 print(f"Instance ID: {instance['InstanceId']}, Public IP: {instance.get('PublicIpAddress')}")
 
     except Exception as e:
-        print(f"Error launching instances: {e}")
-        sys.exit(1)
+        print(f"Error launching instances: {e}"); sys.exit(1)
 
 if __name__ == "__main__":
     main()
